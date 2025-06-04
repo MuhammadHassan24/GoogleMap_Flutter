@@ -71,7 +71,8 @@ class _CustomBottomSheetState extends State<CustomBottomSheet> {
       builder: (context, constraints) {
         return DraggableScrollableSheet(
           initialChildSize: 0.25,
-          maxChildSize: 0.25,
+          maxChildSize:
+              0.25, // Set this to the same as anchor size to prevent expanding
           minChildSize: 0,
           expand: false,
           snap: true,

@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gmap_app/utils/string.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -20,42 +19,94 @@ class _SearchPageState extends State<SearchPage> {
   List _placeSuggestionsList = [];
   double? _selectedLatitude;
   double? _selectedLongitude;
+  String? _selectedPlaceId;
+  bool _isLoading = false;
 
   @override
   void initState() {
-    _controller.addListener(() {
-      _onchange();
-    });
+    _controller.addListener(_onchange);
     super.initState();
   }
 
-  void _onchange() {
-    _placeSuggestions(_controller.text);
+  @override
+  void dispose() {
+    _controller.removeListener(_onchange);
+    _controller.dispose();
+    super.dispose();
   }
 
-  void _placeSuggestions(String input) async {
+  void _onchange() {
+    if (_controller.text.isEmpty) {
+      setState(() {
+        _placeSuggestionsList = [];
+      });
+    } else {
+      _placeSuggestions(_controller.text);
+    }
+  }
+
+  Future<void> _placeSuggestions(String input) async {
     try {
+      if (input.isEmpty) {
+        setState(() {
+          _placeSuggestionsList = [];
+          _isLoading = false;
+        });
+        return;
+      }
+      setState(() {
+        _isLoading = true;
+      });
+
       String baseURL =
           "https://maps.googleapis.com/maps/api/place/autocomplete/json";
-      String request = "$baseURL?input=$input&key=$API_KEY&sessiontoken=$token";
+      String request = "$baseURL?input=$input&key=$API_KEY";
+
       var response = await http.get(Uri.parse(request));
       var data = json.decode(response.body);
+
       log("Full API Response: ${response.body}");
-      if (kDebugMode) {
-        log(data);
-      }
+
       if (response.statusCode == 200) {
         setState(() {
           _placeSuggestionsList = data['predictions'] ?? [];
-          _selectedLatitude = data['result']['geometry']['location']['lat'];
-          _selectedLongitude = data['result']['geometry']['location']['lng'];
+          _isLoading = false;
         });
+
         log("Suggestions: ${_placeSuggestionsList.toString()}");
       } else {
-        throw Exception("Failed to load data");
+        setState(() {
+          _isLoading = false;
+        });
+        throw Exception("Failed to load data: ${data['error_message']}");
       }
     } catch (e) {
       log("Error Message : $e");
+    }
+  }
+
+  Future<void> _getPlaceDetails(String placeId) async {
+    try {
+      String baseURL =
+          "https://maps.googleapis.com/maps/api/place/details/json";
+      String request =
+          "$baseURL?place_id=$placeId&key=$API_KEY&sessiontoken=$token";
+
+      var response = await http.get(Uri.parse(request));
+      var data = json.decode(response.body);
+
+      if (response.statusCode == 200 && data['status'] == 'OK') {
+        setState(() {
+          _selectedLatitude = data['result']['geometry']['location']['lat'];
+          _selectedLongitude = data['result']['geometry']['location']['lng'];
+          _selectedPlaceId = placeId;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      log("Error getting place details: $e");
     }
   }
 
@@ -63,52 +114,65 @@ class _SearchPageState extends State<SearchPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.only(top: 50, left: 15, right: 15),
+        padding: const EdgeInsets.only(top: 50, left: 15, right: 15),
         child: Column(
           children: [
             TextField(
               controller: _controller,
-              onChanged: (value) => setState(() {}),
               decoration: InputDecoration(
-                contentPadding: EdgeInsets.all(8),
-                prefixIcon: Icon(Icons.arrow_back),
-                suffixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(
+                contentPadding: const EdgeInsets.all(8),
+                prefixIcon: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                suffixIcon: _isLoading
+                    ? IconButton(
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() {
+                            _placeSuggestionsList = [];
+                          });
+                        },
+                        icon: Icon(Icons.clear),
+                      )
+                    : Icon(Icons.search),
+                border: const OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(50)),
                 ),
               ),
             ),
-            Visibility(
-              visible: _controller.text.isNotEmpty ? true : false,
-              child: Expanded(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
-                  itemCount: _placeSuggestionsList.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      minTileHeight: 50,
-                      title: Text(
-                        _placeSuggestionsList[index]["description"],
-                        style: TextStyle(color: Colors.black),
+            Expanded(
+              child:
+                  _controller.text.isNotEmpty &&
+                      _placeSuggestionsList.isNotEmpty
+                  ? ListView.builder(
+                      itemCount: _placeSuggestionsList.length,
+                      itemBuilder: (context, index) {
+                        final place = _placeSuggestionsList[index];
+                        return ListTile(
+                          title: Text(
+                            place["description"],
+                            style: const TextStyle(color: Colors.black),
+                          ),
+                          onTap: () async {
+                            await _getPlaceDetails(place['place_id']);
+                            if (_selectedLatitude != null &&
+                                _selectedLongitude != null) {
+                              Navigator.pop(
+                                context,
+                                LatLng(_selectedLatitude!, _selectedLongitude!),
+                              );
+                            }
+                          },
+                        );
+                      },
+                    )
+                  : const Center(
+                      child: Text(
+                        'Start typing to search for places',
+                        style: TextStyle(color: Colors.grey),
                       ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(
-                  context,
-                  LatLng(
-                    _selectedLatitude ?? 24.9114,
-                    _selectedLongitude ?? 66.9822,
-                  ),
-                );
-                setState(() {});
-              },
-              child: Text("Back"),
+                    ),
             ),
           ],
         ),
