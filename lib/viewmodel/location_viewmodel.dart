@@ -19,6 +19,7 @@ class LocationViewModel extends BaseViewModel {
 
   LatLng intialLocation = LatLng(24.9054, 66.9670);
 
+  // This method Handle permission request Using Geolocator
   Future<bool> _handleLocationPermission(BuildContext context) async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -57,6 +58,7 @@ class LocationViewModel extends BaseViewModel {
     return true;
   }
 
+  // Get Current User Loaction Using Geolocator
   Future _getCurrentPosition(BuildContext context) async {
     final hasPermission = await _handleLocationPermission(context);
     if (!hasPermission) return;
@@ -72,6 +74,7 @@ class LocationViewModel extends BaseViewModel {
         });
   }
 
+  // Get Current Lat and Log Using Geocoding and PlaceMarker to get place details
   Future<void> _getAddressFromLaglng(Position position) async {
     await placemarkFromCoordinates(
           currentPosition!.latitude,
@@ -90,6 +93,7 @@ class LocationViewModel extends BaseViewModel {
         });
   }
 
+  // Update Ui when user select place from search screen
   void updateSelectedLocation(LatLng newLocation) {
     selectedLocation = newLocation;
     markers.clear();
